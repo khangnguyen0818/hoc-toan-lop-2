@@ -59,6 +59,8 @@ function speak(html) {
 function viVoice() {
   try { return speechSynthesis.getVoices().find(v => /^vi([-_]|$)/i.test(v.lang)) || null; } catch (e) { return null; }
 }
+/* Google chặn giọng đọc nếu biết yêu cầu đến từ trang khác → không gửi địa chỉ trang */
+try { const m = document.createElement('meta'); m.name = 'referrer'; m.content = 'no-referrer'; document.head.appendChild(m); } catch (e) { }
 let ttsAudio = null, ttsRun = 0;
 function stopSpeak() {
   ttsRun++;
@@ -72,11 +74,19 @@ function speakOnline(t) {
     if (s.trim()) parts.push(s.trim());
   });
   const run = ttsRun;
+  let played = false;
+  const fallback = () => {
+    if (run !== ttsRun) return;
+    ttsAudio = null;
+    try { const u = new SpeechSynthesisUtterance(t); u.lang = 'vi-VN'; u.rate = .9; speechSynthesis.speak(u); } catch (e) { }
+  };
   const next = i => {
     if (run !== ttsRun || i >= parts.length) return;
     const a = new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&ttsspeed=0.9&q=' + encodeURIComponent(parts[i]));
-    ttsAudio = a; a.onended = () => next(i + 1); a.onerror = () => next(i + 1);
-    a.play().catch(() => { });
+    ttsAudio = a; a.onended = () => next(i + 1);
+    a.onerror = () => played ? next(i + 1) : fallback();
+    a.onplaying = () => { played = true; };
+    a.play().catch(err => { if (!played && err && err.name !== 'AbortError') fallback(); });
   };
   next(0);
 }
